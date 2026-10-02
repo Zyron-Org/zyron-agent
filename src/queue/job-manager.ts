@@ -16,59 +16,85 @@ export class JobManager {
     const startTime = Date.now();
     console.log(`[JobManager] Processing job ${job.jobId} for audit ${job.auditId} (${job.findingsToProve.length} finding(s) to prove)...`);
 
-    const results: ProverFindingResult[] = [];
+    try {
+      const results: ProverFindingResult[] = [];
 
-    // Attempt compiling the original contract
-    const compileResult = SolcCompiler.compileSources({
-      [job.contractFileName]: job.sourceCode,
-    });
-
-    for (const finding of job.findingsToProve) {
-      console.log(`[JobManager] Synthesizing PoC for finding: ${finding.id} (${finding.title})`);
-      
-      // Step 1: Synthesize PoC exploit
-      const synthesizedPoC = await PoCSynthesizer.synthesizePoC(
-        job.contractFileName,
-        job.sourceCode,
-        finding,
-      );
-
-      // Step 2: Run simulation in virtual sandbox
-      const findingResult = await EvmSimulator.simulateExploit({
-        contractFileName: job.contractFileName,
-        sourceCode: job.sourceCode,
-        finding,
-        synthesizedPoC,
-        artifacts: compileResult.artifacts,
+      // Attempt compiling the original contract
+      const compileResult = SolcCompiler.compileSources({
+        [job.contractFileName]: job.sourceCode,
       });
 
-      // Step 3: Format and sanitize trace steps
-      findingResult.traceSteps = TraceFormatter.sanitizeTrace(findingResult.traceSteps);
-      findingResult.summary = TraceFormatter.formatSummary(findingResult);
+      for (const finding of job.findingsToProve) {
+        console.log(`[JobManager] Synthesizing PoC for finding: ${finding.id} (${finding.title})`);
+        
+        // Step 1: Synthesize PoC exploit (will throw if Gemini API fails!)
+        const synthesizedPoC = await PoCSynthesizer.synthesizePoC(
+          job.contractFileName,
+          job.sourceCode,
+          finding,
+        );
 
-      results.push(findingResult);
+        // Step 2: Run simulation in virtual sandbox
+        const findingResult = await EvmSimulator.simulateExploit({
+          contractFileName: job.contractFileName,
+          sourceCode: job.sourceCode,
+          finding,
+          synthesizedPoC,
+          artifacts: compileResult.artifacts,
+        });
+
+        // Step 3: Format and sanitize trace steps
+        findingResult.traceSteps = TraceFormatter.sanitizeTrace(findingResult.traceSteps);
+        findingResult.summary = TraceFormatter.formatSummary(findingResult);
+
+        results.push(findingResult);
+      }
+
+      const durationMs = Date.now() - startTime;
+      const finalResult: ProverJobResult = {
+        jobId: job.jobId,
+        auditId: job.auditId,
+        status: 'COMPLETED',
+        durationMs,
+        results,
+      };
+
+      this.jobs.set(job.jobId, finalResult);
+      console.log(`[JobManager] Job ${job.jobId} finished in ${durationMs}ms with ${results.length} result(s).`);
+
+      // Step 4: Dispatch callback webhook to zyron-backend if provided
+      if (job.callbackUrl) {
+        this.dispatchCallback(job.callbackUrl, finalResult).catch((err) => {
+          console.warn(`[JobManager] Webhook callback failed for ${job.callbackUrl}: ${err.message}`);
+        });
+      }
+
+      return finalResult;
+    } catch (jobErr: any) {
+      const durationMs = Date.now() - startTime;
+      const errorMsg = jobErr.message || 'AI EVM Sandbox Prover encountered an unhandled error.';
+      console.error(`[JobManager] Job ${job.jobId} failed for audit ${job.auditId}: ${errorMsg}`);
+
+      const failedResult: ProverJobResult = {
+        jobId: job.jobId,
+        auditId: job.auditId,
+        status: 'FAILED',
+        error: errorMsg,
+        durationMs,
+        results: [],
+      };
+
+      this.jobs.set(job.jobId, failedResult);
+
+      // Dispatch failure callback so backend halts and marks stage FAILED
+      if (job.callbackUrl) {
+        await this.dispatchCallback(job.callbackUrl, failedResult).catch((err) => {
+          console.error(`[JobManager] Failed to dispatch failure callback to ${job.callbackUrl}: ${err.message}`);
+        });
+      }
+
+      throw jobErr;
     }
-
-    const durationMs = Date.now() - startTime;
-    const finalResult: ProverJobResult = {
-      jobId: job.jobId,
-      auditId: job.auditId,
-      status: 'COMPLETED',
-      durationMs,
-      results,
-    };
-
-    this.jobs.set(job.jobId, finalResult);
-    console.log(`[JobManager] Job ${job.jobId} finished in ${durationMs}ms with ${results.length} result(s).`);
-
-    // Step 4: Dispatch callback webhook to zyron-backend if provided
-    if (job.callbackUrl) {
-      this.dispatchCallback(job.callbackUrl, finalResult).catch((err) => {
-        console.warn(`[JobManager] Webhook callback failed for ${job.callbackUrl}: ${err.message}`);
-      });
-    }
-
-    return finalResult;
   }
 
   private static async dispatchCallback(callbackUrl: string, result: ProverJobResult) {
