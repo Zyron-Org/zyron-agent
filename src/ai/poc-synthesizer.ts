@@ -51,7 +51,7 @@ export class PoCSynthesizer {
     }
 
     // Deterministic synthesized template fallback
-    const targetName = contractFileName.replace(/\.sol$/, '') || 'Target';
+    const targetName = (contractFileName || 'Target.sol').replace(/\.sol$/, '') || 'Target';
     return `// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 

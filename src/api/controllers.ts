@@ -15,15 +15,15 @@ export class ProverController {
 
   static async submitJob(req: Request, res: Response) {
     const body = req.body as ProverJobInput;
-
-    if (!body.auditId || !body.sourceCode || !body.findingsToProve) {
+    const findings = body.findingsToProve || (body as any).findings;
+    if (!body.auditId || !body.sourceCode || !findings) {
       return res.status(400).json({
         error: 'Missing required fields: auditId, sourceCode, findingsToProve are mandatory.',
       });
     }
 
     const jobId = body.jobId || `job-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const jobInput: ProverJobInput = { ...body, jobId };
+    const jobInput: ProverJobInput = { ...body, findingsToProve: findings, jobId };
 
     // Fire asynchronous background processing
     JobManager.processJob(jobInput).catch((err) => {
@@ -35,7 +35,7 @@ export class ProverController {
       jobId,
       auditId: body.auditId,
       status: 'QUEUED',
-      findingsCount: body.findingsToProve.length,
+      findingsCount: findings.length,
     });
   }
 
@@ -52,15 +52,16 @@ export class ProverController {
 
   static async simulateInstant(req: Request, res: Response) {
     const body = req.body as ProverJobInput;
+    const findings = body.findingsToProve || (body as any).findings;
 
-    if (!body.sourceCode || !body.findingsToProve) {
+    if (!body.sourceCode || !findings) {
       return res.status(400).json({
         error: 'Missing required fields: sourceCode and findingsToProve are mandatory.',
       });
     }
 
     const jobId = body.jobId || `sim-${Date.now()}`;
-    const result = await JobManager.processJob({ ...body, jobId });
+    const result = await JobManager.processJob({ ...body, findingsToProve: findings, jobId });
 
     return res.json(result);
   }
