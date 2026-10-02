@@ -72,12 +72,17 @@ export class JobManager {
   }
 
   private static async dispatchCallback(callbackUrl: string, result: ProverJobResult) {
-    console.log(`[JobManager] Dispatching prover callback to ${callbackUrl}...`);
+    const crypto = await import('crypto');
+    const { CALLBACK_SHARED_SECRET } = await import('../config/env');
+    const payloadStr = JSON.stringify(result);
+    const hmacSig = crypto.createHmac('sha256', CALLBACK_SHARED_SECRET).update(payloadStr).digest('hex');
+
+    console.log(`[JobManager] Dispatching authenticated prover callback to ${callbackUrl}...`);
     await axios.post(callbackUrl, result, {
       timeout: 10000,
       headers: {
         'Content-Type': 'application/json',
-        'X-Zyron-Agent-Signature': 'zyron-agent-v1-verified',
+        'X-Zyron-Agent-Signature': `sha256=${hmacSig}`,
       },
     });
     console.log(`[JobManager] Callback successfully delivered to ${callbackUrl}`);
