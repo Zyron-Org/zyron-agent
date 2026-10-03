@@ -1,68 +1,81 @@
 import { Request, Response } from 'express';
-import { JobManager } from '../queue/job-manager';
+import * as path from 'path';
+import * as fs from 'fs';
+import { FileQueue } from '../queue/file-queue';
 import { ProverJobInput } from '../types';
+import { TranscriptLogger } from '../logging/transcript-logger';
+
+const fileQueue = new FileQueue();
 
 export class ProverController {
   static async health(req: Request, res: Response) {
     res.json({
       status: 'healthy',
       service: 'zyron-agent-prover',
-      version: '1.0.0',
+      engine: 'autonomous-foundry-agent',
+      version: '2.0.0',
       uptime: process.uptime(),
       timestamp: new Date().toISOString(),
     });
   }
 
   static async submitJob(req: Request, res: Response) {
-    const body = req.body as ProverJobInput;
-    const findings = body.findingsToProve || (body as any).findings;
-    if (!body.auditId || !body.sourceCode || !findings) {
+    const body = req.body as ProverJobInput & { repo?: any; findings?: any };
+    const findings = body.findingsToProve || body.findings;
+
+    if (!body.auditId || (!body.sourceCode && !body.repo) || !findings) {
       return res.status(400).json({
-        error: 'Missing required fields: auditId, sourceCode, findingsToProve are mandatory.',
+        error: 'Missing required fields: auditId, (sourceCode or repo), findings are mandatory.',
       });
     }
 
     const jobId = body.jobId || `job-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const jobInput: ProverJobInput = { ...body, findingsToProve: findings, jobId };
 
-    // Fire asynchronous background processing
-    JobManager.processJob(jobInput).catch((err) => {
-      console.error(`[ProverController] Background job ${jobId} failed: ${err.message}`);
-    });
-
-    return res.status(202).json({
-      message: 'Prover job queued for execution',
+    const queuedJob = fileQueue.enqueue({
       jobId,
       auditId: body.auditId,
       status: 'QUEUED',
+      repo: body.repo,
+      contractFileName: body.contractFileName,
+      sourceCode: body.sourceCode,
+      callbackUrl: body.callbackUrl,
+      findings,
+    });
+
+    return res.status(202).json({
+      message: 'Prover job queued for execution in autonomous sandbox',
+      jobId,
+      auditId: body.auditId,
+      status: queuedJob.status,
       findingsCount: findings.length,
     });
   }
 
   static async getJob(req: Request, res: Response) {
     const jobId = String(req.params.jobId);
-    const result = JobManager.getJob(jobId);
+    const job = fileQueue.getJob(jobId);
 
-    if (!result) {
+    if (!job) {
       return res.status(404).json({ error: `Job ${jobId} not found` });
     }
 
-    return res.json(result);
+    return res.json(job);
   }
 
-  static async simulateInstant(req: Request, res: Response) {
-    const body = req.body as ProverJobInput;
-    const findings = body.findingsToProve || (body as any).findings;
+  static async getTranscript(req: Request, res: Response) {
+    const jobId = String(req.params.jobId);
+    const findingId = req.query.findingId ? String(req.query.findingId) : undefined;
 
-    if (!body.sourceCode || !findings) {
-      return res.status(400).json({
-        error: 'Missing required fields: sourceCode and findingsToProve are mandatory.',
-      });
-    }
+    const logger = new TranscriptLogger(jobId, findingId);
+    const entries = logger.readEntries();
 
-    const jobId = body.jobId || `sim-${Date.now()}`;
-    const result = await JobManager.processJob({ ...body, findingsToProve: findings, jobId });
-
-    return res.json(result);
+    return res.json({
+      jobId,
+      findingId,
+      entriesCount: entries.length,
+      entries,
+    });
   }
 }
+
+export { fileQueue };

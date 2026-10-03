@@ -1,4 +1,9 @@
-export type ProverStatus = 'PROVEN_EXPLOIT' | 'PROVEN_FALSE_POSITIVE' | 'INCONCLUSIVE';
+export type ProverStatus =
+  | 'PROVEN_EXPLOIT'
+  | 'PROVEN_FALSE_POSITIVE'
+  | 'CANNOT_REPRODUCE'
+  | 'COMPILATION_FAILED'
+  | 'INCONCLUSIVE';
 
 export interface TraceStep {
   step: number;
