@@ -15,3 +15,4 @@ router.use(createRpcGatewayRouter());
 router.post('/api/v1/prover/jobs', requireApiKey, ProverController.submitJob);
 router.get('/api/v1/prover/jobs/:jobId', requireApiKey, ProverController.getJob);
 router.get('/api/v1/prover/jobs/:jobId/transcript', requireApiKey, ProverController.getTranscript);
+router.get('/api/v1/prover/findings/:findingId/transcript', requireApiKey, ProverController.getTranscriptByFinding);

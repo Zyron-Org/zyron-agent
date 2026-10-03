@@ -76,6 +76,56 @@ export class ProverController {
       entries,
     });
   }
+
+  static async getTranscriptByFinding(req: Request, res: Response) {
+    const findingId = String(req.params.findingId);
+    const baseDir = path.join(process.cwd(), 'logs', 'jobs');
+
+    if (!fs.existsSync(baseDir)) {
+      return res.json({ findingId, entriesCount: 0, entries: [] });
+    }
+
+    try {
+      const jobDirs = fs.readdirSync(baseDir).filter((d) => {
+        try {
+          return fs.statSync(path.join(baseDir, d)).isDirectory();
+        } catch {
+          return false;
+        }
+      });
+
+      let latestPath: string | null = null;
+      let latestMtime = 0;
+      let foundJobId: string | null = null;
+
+      for (const jobDir of jobDirs) {
+        const candidate = path.join(baseDir, jobDir, `${findingId}.jsonl`);
+        if (fs.existsSync(candidate)) {
+          const stat = fs.statSync(candidate);
+          if (stat.mtimeMs > latestMtime) {
+            latestMtime = stat.mtimeMs;
+            latestPath = candidate;
+            foundJobId = jobDir;
+          }
+        }
+      }
+
+      if (!latestPath) {
+        return res.json({ findingId, entriesCount: 0, entries: [] });
+      }
+
+      const lines = fs.readFileSync(latestPath, 'utf8').split('\n').filter(Boolean);
+      const entries = lines.map((line) => JSON.parse(line));
+      return res.json({
+        jobId: foundJobId,
+        findingId,
+        entriesCount: entries.length,
+        entries,
+      });
+    } catch (e: any) {
+      return res.status(500).json({ error: `Failed to read transcript: ${e.message}` });
+    }
+  }
 }
 
 export { fileQueue };

@@ -87,7 +87,7 @@ export class EvmSimulator {
         ruleId: finding.ruleId,
         status: 'PROVEN_EXPLOIT',
         verdict: 'PROVEN_EXPLOIT',
-        fundsDrainedEth: 100,
+        fundsDrainedEth: 0,
         confidence: 'HIGH',
         summary: `Exploit mathematically verified in sandbox: Unprotected initialize() allowed attacker to hijack protocol ownership.`,
         synthesizedPoC: req.synthesizedPoC,
