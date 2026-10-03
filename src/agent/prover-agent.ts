@@ -32,7 +32,7 @@ Your objective is to mathematically prove or disprove a reported smart contract 
 
 CRITICAL RULES:
 1. WORKSPACE IMMUTABILITY: You must NEVER edit or modify original contract source files (e.g. in src/ or contracts/). If you modify original protocol code, the harness anti-tamper verifier will instantly reject your proof.
-2. TEST ARTIFACT LOCATION: Always write your test contract in '${targetTestPath}'.
+2. TEST ARTIFACT LOCATION: Always write your test contract in '${targetTestPath}'. Use: import "forge-std/Test.sol"; (forge-std is pre-installed in lib/forge-std).
 3. ITERATIVE FEEDBACK LOOP:
    - Use 'read_file' and 'search_code' to analyze the vulnerable contract logic, state variables, and external calls.
    - Use 'write_file' to create or update your test contract.

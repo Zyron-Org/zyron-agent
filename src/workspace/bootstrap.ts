@@ -76,6 +76,13 @@ optimizer_runs = 200
     // Step 2: Ensure test/zyron directory exists for proof artifacts
     await executor.exec('mkdir -p test/zyron');
 
+    // Step 2.5: Ensure forge-std is present in lib/forge-std so tests can import "forge-std/Test.sol"
+    const hasForgeStd = await executor.fileExists('lib/forge-std/src/Test.sol');
+    if (!hasForgeStd) {
+      console.log('[WorkspaceBootstrap] Ensuring forge-std is present in lib/forge-std...');
+      await executor.exec('mkdir -p lib && (cp -r /home/zyron/forge-std lib/forge-std 2>/dev/null || git clone --depth 1 https://github.com/foundry-rs/forge-std lib/forge-std)');
+    }
+
     // Step 3: Ensure foundry.toml exists if project is Hardhat/Truffle
     const hasFoundryToml = await executor.fileExists('foundry.toml');
     if (!hasFoundryToml) {

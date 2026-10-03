@@ -103,10 +103,10 @@ export class GeminiProvider implements LlmProvider {
         const errorData = err.response?.data?.error;
         const msg = errorData?.message || err.message;
 
-        if (status === 429 && attempts < maxAttempts) {
+        if ((status === 429 || status === 503 || status === 502 || status === 500) && attempts < maxAttempts) {
           const match = msg.match(/retry in ([\d\.]+)s/i);
-          const waitSec = match ? Math.min(Math.ceil(parseFloat(match[1])), 45) : attempts * 10;
-          console.warn(`[GeminiProvider] Rate limited (429). Retrying in ${waitSec}s (attempt ${attempts}/${maxAttempts})...`);
+          const waitSec = match ? Math.min(Math.ceil(parseFloat(match[1])), 45) : attempts * 5;
+          console.warn(`[GeminiProvider] Transient error / rate limit (${status}). Retrying in ${waitSec}s (attempt ${attempts}/${maxAttempts})...`);
           await new Promise((resolve) => setTimeout(resolve, waitSec * 1000));
           continue;
         }
