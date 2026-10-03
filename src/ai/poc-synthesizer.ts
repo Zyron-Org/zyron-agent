@@ -1,12 +1,11 @@
 import axios from 'axios';
-import { GEMINI_API_KEY } from '../config/env';
+import { GEMINI_API_KEY, GEMINI_MODEL } from '../config/env';
 import { FindingToProve } from '../types';
 import { buildPoCSynthesisPrompt } from './poc-prompt';
 
 export class PoCSynthesizer {
   /**
    * Synthesizes an executable Solidity Proof-of-Concept exploit test using Google Gemini.
-   * If Gemini API is offline or returns an error, falls back to a clean deterministic exploit template.
    */
   static async synthesizePoC(
     contractFileName: string,
@@ -22,7 +21,7 @@ export class PoCSynthesizer {
     }
 
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
       const response = await axios.post(
         url,
         {
