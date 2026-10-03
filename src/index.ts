@@ -15,8 +15,11 @@ app.use(router);
 
 const worker = new ProverWorker(fileQueue);
 
-const server = app.listen(PORT, async () => {
-  console.log(`
+let server: any;
+
+if (process.env.NODE_ENV !== 'test') {
+  server = app.listen(PORT, async () => {
+    console.log(`
 =============================================================
 🛡️  ZYRON AUTONOMOUS AI AGENT & EVM SANDBOX PROVER (v2.0)
 =============================================================
@@ -29,7 +32,8 @@ const server = app.listen(PORT, async () => {
 =============================================================
 `);
 
-  await worker.start();
-});
+    await worker.start();
+  });
+}
 
 export { app, server, worker };

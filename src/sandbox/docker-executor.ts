@@ -48,7 +48,7 @@ export class DockerExecutor implements Executor {
     }
 
     // 2. Remove any leftover container with the same name if previously crashed
-    await this.runHostCommand('docker', ['rm', '-f', this.containerName], { timeoutMs: 5000 });
+    await this.runHostCommand('docker', ['rm', '-f', this.containerName], { timeoutMs: 10000 });
 
     const absWorkspace = path.resolve(this.workspaceDir);
     const args = [
@@ -58,7 +58,6 @@ export class DockerExecutor implements Executor {
       '--name',
       this.containerName,
       `--memory=${this.memoryLimit}`,
-      `--memory-swap=${this.memoryLimit}`,
       `--cpus=${this.cpuLimit}`,
       '--pids-limit=200',
       '-v',
@@ -71,7 +70,7 @@ export class DockerExecutor implements Executor {
       '/dev/null',
     ];
 
-    const result = await this.runHostCommand('docker', args, { timeoutMs: 30000 });
+    const result = await this.runHostCommand('docker', args, { timeoutMs: 90000 });
     if (result.exitCode !== 0) {
       throw new Error(`Failed to start Docker sandbox container: ${result.stderr || result.stdout}`);
     }
@@ -190,7 +189,7 @@ export class DockerExecutor implements Executor {
       proc.on('close', (code) => {
         clearTimeout(timer);
         if (timedOut) {
-          stderr += `\n[Command timed out after ${options.timeoutMs}ms]`;
+          stderr += `\n[Command "${cmd} ${args.slice(0, 2).join(' ')}" timed out after ${options.timeoutMs}ms]`;
         }
         resolve({
           stdout,
