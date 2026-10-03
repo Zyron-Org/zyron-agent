@@ -48,57 +48,75 @@ export class GeminiProvider implements LlmProvider {
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${this.modelName}:generateContent?key=${this.apiKey}`;
 
-    try {
-      const res = await axios.post(url, payload, {
-        timeout: this.timeoutMs,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    let attempts = 0;
+    const maxAttempts = 4;
 
-      const candidate = res.data?.candidates?.[0];
-      if (!candidate) {
-        throw new Error('Gemini API returned no candidates');
-      }
+    while (attempts < maxAttempts) {
+      attempts++;
+      try {
+        const res = await axios.post(url, payload, {
+          timeout: this.timeoutMs,
+          headers: { 'Content-Type': 'application/json' },
+        });
 
-      const parts = candidate.content?.parts || [];
-      let textContent = '';
-      const toolCalls: ToolCall[] = [];
-
-      for (let i = 0; i < parts.length; i++) {
-        const part = parts[i];
-        if (part.text) {
-          textContent += part.text;
+        const candidate = res.data?.candidates?.[0];
+        if (!candidate) {
+          throw new Error('Gemini API returned no candidates');
         }
-        if (part.functionCall) {
-          toolCalls.push({
-            id: part.functionCall.id || `call_${Date.now()}_${i}`,
-            name: part.functionCall.name,
-            arguments: part.functionCall.args || {},
-            thoughtSignature: part.thoughtSignature || part.functionCall.thought_signature || part.functionCall.thoughtSignature,
-            rawPart: part,
-          });
-        }
-      }
 
-      const usageMetadata = res.data?.usageMetadata;
-      return {
-        content: textContent,
-        toolCalls,
-        rawParts: parts,
-        finishReason: candidate.finishReason || 'STOP',
-        usage: usageMetadata
-          ? {
-              promptTokens: usageMetadata.promptTokenCount || 0,
-              completionTokens: usageMetadata.candidatesTokenCount || 0,
-              totalTokens: usageMetadata.totalTokenCount || 0,
-            }
-          : undefined,
-      };
-    } catch (err: any) {
-      const errorData = err.response?.data?.error;
-      const status = err.response?.status ? `HTTP ${err.response.status}` : 'Request Error';
-      const msg = errorData?.message || err.message;
-      throw new Error(`[GeminiProvider] ${status}: ${msg}`);
+        const parts = candidate.content?.parts || [];
+        let textContent = '';
+        const toolCalls: ToolCall[] = [];
+
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          if (part.text) {
+            textContent += part.text;
+          }
+          if (part.functionCall) {
+            toolCalls.push({
+              id: part.functionCall.id || `call_${Date.now()}_${i}`,
+              name: part.functionCall.name,
+              arguments: part.functionCall.args || {},
+              thoughtSignature: part.thoughtSignature || part.functionCall.thought_signature || part.functionCall.thoughtSignature,
+              rawPart: part,
+            });
+          }
+        }
+
+        const usageMetadata = res.data?.usageMetadata;
+        return {
+          content: textContent,
+          toolCalls,
+          rawParts: parts,
+          finishReason: candidate.finishReason || 'STOP',
+          usage: usageMetadata
+            ? {
+                promptTokens: usageMetadata.promptTokenCount || 0,
+                completionTokens: usageMetadata.candidatesTokenCount || 0,
+                totalTokens: usageMetadata.totalTokenCount || 0,
+              }
+            : undefined,
+        };
+      } catch (err: any) {
+        const status = err.response?.status;
+        const errorData = err.response?.data?.error;
+        const msg = errorData?.message || err.message;
+
+        if (status === 429 && attempts < maxAttempts) {
+          const match = msg.match(/retry in ([\d\.]+)s/i);
+          const waitSec = match ? Math.min(Math.ceil(parseFloat(match[1])), 45) : attempts * 10;
+          console.warn(`[GeminiProvider] Rate limited (429). Retrying in ${waitSec}s (attempt ${attempts}/${maxAttempts})...`);
+          await new Promise((resolve) => setTimeout(resolve, waitSec * 1000));
+          continue;
+        }
+
+        const httpStatus = status ? `HTTP ${status}` : 'Request Error';
+        throw new Error(`[GeminiProvider] ${httpStatus}: ${msg}`);
+      }
     }
+
+    throw new Error('[GeminiProvider] Exceeded maximum retry attempts');
   }
 
   private formatMessages(messages: LlmMessage[]) {
