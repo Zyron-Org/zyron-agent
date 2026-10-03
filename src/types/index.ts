@@ -38,6 +38,8 @@ export interface ProverFindingResult {
   findingId: string;
   ruleId?: string;
   status: ProverStatus;
+  verdict?: ProverStatus;
+  fundsDrainedEth?: number;
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
   summary: string;
   synthesizedPoC?: string;
