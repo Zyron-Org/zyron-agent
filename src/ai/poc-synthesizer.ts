@@ -20,46 +20,76 @@ export class PoCSynthesizer {
       );
     }
 
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_API_KEY}`;
-      const response = await axios.post(
-        url,
-        {
-          contents: [
-            {
-              role: 'user',
-              parts: [{ text: prompt }],
+    const modelsToTry = [
+      GEMINI_MODEL,
+      'gemini-3.5-flash',
+      'gemini-3.6-flash',
+      'gemini-flash-latest',
+    ].filter((v, i, a) => a.indexOf(v) === i && !!v);
+
+    let lastError: any = null;
+
+    for (const model of modelsToTry) {
+      try {
+        console.log(`[PoC Synthesizer] Requesting synthesis using ${model}...`);
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+        const response = await axios.post(
+          url,
+          {
+            contents: [
+              {
+                role: 'user',
+                parts: [{ text: prompt }],
+              },
+            ],
+            safetySettings: [
+              { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_NONE' },
+              { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_NONE' },
+              { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
+              { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+            ],
+            generationConfig: {
+              temperature: 0.1,
+              maxOutputTokens: 8192,
+              thinkingConfig: {
+                thinkingBudget: 0,
+              },
             },
-          ],
-          generationConfig: {
-            temperature: 0.1,
-            maxOutputTokens: 2048,
           },
-        },
-        { timeout: 20000 },
-      );
+          { timeout: 35000 },
+        );
 
-      const text = response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (text) {
-        const match = text.match(/```solidity([\s\S]*?)```/) || text.match(/```([\s\S]*?)```/);
-        if (match && match[1]) {
-          return match[1].trim();
+        const candidate = response.data?.candidates?.[0];
+        const parts = candidate?.content?.parts || [];
+        const text = parts.map((p: any) => p.text).filter(Boolean).join('');
+
+        if (text) {
+          const match = text.match(/```(?:solidity)?([\s\S]*?)```/i);
+          if (match && match[1] && match[1].includes('contract')) {
+            console.log(`[PoC Synthesizer] Successfully synthesized PoC using ${model}`);
+            return match[1].trim();
+          }
+          if (text.includes('contract ExploitTest') || (text.includes('contract ') && text.includes('test'))) {
+            console.log(`[PoC Synthesizer] Successfully synthesized PoC using ${model}`);
+            return text.trim();
+          }
+          console.warn(`[PoC Synthesizer] Model ${model} returned non-code response. Trying next model...`);
+        } else {
+          console.warn(`[PoC Synthesizer] Model ${model} returned empty parts. Trying next model...`);
         }
-        if (text.includes('contract ExploitTest')) {
-          return text.trim();
-        }
-        return text.trim();
+      } catch (err: any) {
+        lastError = err;
+        const status = err.response?.status ? `HTTP ${err.response.status}` : err.message;
+        console.warn(`[PoC Synthesizer] Model ${model} call failed (${status}). Trying next model...`);
       }
-
-      throw new Error('Gemini API returned an empty response with no exploit test candidates.');
-    } catch (err: any) {
-      const errorData = err.response?.data?.error;
-      const status = err.response?.status ? `HTTP ${err.response.status}` : 'Network Error';
-      const detail = errorData?.message || err.message;
-      const fullError = `Gemini API call failed (${status}: ${detail})`;
-      console.error(`[PoC Synthesizer] ${fullError}`);
-      throw new Error(fullError);
     }
+
+    const errorData = lastError?.response?.data?.error;
+    const status = lastError?.response?.status ? `HTTP ${lastError.response.status}` : 'API Error';
+    const detail = errorData?.message || lastError?.message || 'Models returned empty response or refused code synthesis.';
+    const fullError = `Gemini API call failed (${status}: ${detail})`;
+    console.error(`[PoC Synthesizer] ${fullError}`);
+    throw new Error(fullError);
 
   }
 }
