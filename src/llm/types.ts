@@ -4,6 +4,8 @@ export interface ToolCall {
   id: string;
   name: string;
   arguments: Record<string, any>;
+  thoughtSignature?: string;
+  rawPart?: any;
 }
 
 export interface ToolResult {
@@ -18,6 +20,7 @@ export interface LlmMessage {
   content?: string;
   toolCalls?: ToolCall[];
   toolResults?: ToolResult[];
+  rawParts?: any[];
 }
 
 export interface ToolParameterProperty {
@@ -49,6 +52,7 @@ export interface LlmUsage {
 export interface LlmResponse {
   content: string;
   toolCalls: ToolCall[];
+  rawParts?: any[];
   usage?: LlmUsage;
   finishReason?: string;
 }

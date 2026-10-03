@@ -12,7 +12,7 @@ export class GeminiProvider implements LlmProvider {
 
   constructor(options: LlmProviderOptions = {}) {
     this.apiKey = options.apiKey || process.env.GEMINI_API_KEY || '';
-    this.modelName = options.model || process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+    this.modelName = options.model || process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
     this.temperature = options.temperature ?? 0.2;
     this.maxTokens = options.maxTokens ?? 8192;
     this.timeoutMs = options.timeoutMs ?? 45000;
@@ -70,9 +70,11 @@ export class GeminiProvider implements LlmProvider {
         }
         if (part.functionCall) {
           toolCalls.push({
-            id: `call_${Date.now()}_${i}`,
+            id: part.functionCall.id || `call_${Date.now()}_${i}`,
             name: part.functionCall.name,
             arguments: part.functionCall.args || {},
+            thoughtSignature: part.thoughtSignature || part.functionCall.thought_signature || part.functionCall.thoughtSignature,
+            rawPart: part,
           });
         }
       }
@@ -81,6 +83,7 @@ export class GeminiProvider implements LlmProvider {
       return {
         content: textContent,
         toolCalls,
+        rawParts: parts,
         finishReason: candidate.finishReason || 'STOP',
         usage: usageMetadata
           ? {
@@ -120,18 +123,30 @@ export class GeminiProvider implements LlmProvider {
       }
 
       if (msg.role === 'assistant') {
+        if (msg.rawParts && msg.rawParts.length > 0) {
+          contents.push({ role: 'model', parts: msg.rawParts });
+          continue;
+        }
+
         const parts: any[] = [];
         if (msg.content) {
           parts.push({ text: msg.content });
         }
         if (msg.toolCalls) {
           for (const tc of msg.toolCalls) {
-            parts.push({
-              functionCall: {
+            if (tc.rawPart) {
+              parts.push(tc.rawPart);
+            } else {
+              const fc: any = {
                 name: tc.name,
                 args: tc.arguments,
-              },
-            });
+              };
+              const partObj: any = { functionCall: fc };
+              if (tc.thoughtSignature) {
+                partObj.thoughtSignature = tc.thoughtSignature;
+              }
+              parts.push(partObj);
+            }
           }
         }
         contents.push({ role: 'model', parts });

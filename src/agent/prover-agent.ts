@@ -95,6 +95,7 @@ Please begin by exploring the target contract code and constructing the Foundry 
         role: 'assistant',
         content: response.content,
         toolCalls: response.toolCalls,
+        rawParts: response.rawParts,
       });
 
       if (!response.toolCalls || response.toolCalls.length === 0) {
