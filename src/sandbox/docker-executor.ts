@@ -60,6 +60,8 @@ export class DockerExecutor implements Executor {
       `--memory=${this.memoryLimit}`,
       `--cpus=${this.cpuLimit}`,
       '--pids-limit=200',
+      '--cap-drop=ALL',
+      '--security-opt=no-new-privileges',
       '-v',
       `${absWorkspace}:/workspace`,
       '-w',
@@ -134,6 +136,13 @@ export class DockerExecutor implements Executor {
       return false;
     }
     return fs.existsSync(fullPath);
+  }
+
+  async lockdownNetwork(): Promise<void> {
+    if (!this.isRunning) return;
+    await this.runHostCommand('docker', ['network', 'disconnect', '-f', 'bridge', this.containerName], {
+      timeoutMs: 10000,
+    }).catch(() => {});
   }
 
   async endSession(): Promise<void> {

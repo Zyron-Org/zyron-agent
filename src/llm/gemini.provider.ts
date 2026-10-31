@@ -208,6 +208,11 @@ export class GeminiProvider implements LlmProvider {
         };
       }
 
+      // Gemini rejects OBJECT schemas with empty `properties`; omit parameters for zero-arg tools.
+      if (Object.keys(convertedProps).length === 0) {
+        return { name: t.name, description: t.description };
+      }
+
       return {
         name: t.name,
         description: t.description,

@@ -91,7 +91,7 @@ Test result: FAILED. 0 passed; 1 failed; 0 skipped
         ['src/Vault.sol']
       );
 
-      expect(result.status).toBe('CANNOT_REPRODUCE');
+      expect(result.status).toBe('INCONCLUSIVE');
       expect(result.summary).toContain('Anti-tamper violation');
     });
 
@@ -99,14 +99,17 @@ Test result: FAILED. 0 passed; 1 failed; 0 skipped
       const executor = new MockExecutor(testWorkspace);
       await executor.startSession();
 
-      await executor.writeFile('test/zyron/Exploit.t.sol', 'contract ExploitTest {}');
+      await executor.writeFile(
+        'test/zyron/Exploit.t.sol',
+        'import "../../src/Vault.sol";\ncontract ExploitTest { function test_exploit() public { assertTrue(true); } }'
+      );
 
       executor.registerResponse('git status --porcelain', {
         stdout: '?? test/zyron/Exploit.t.sol',
         exitCode: 0,
       });
 
-      executor.registerResponse('forge test --match-path "test/zyron/Exploit.t.sol"', {
+      executor.registerResponse('forge test', {
         stdout: '[PASS] test_exploit() (gas: 215000)\nTest result: ok. 1 passed;',
         exitCode: 0,
       });
@@ -174,7 +177,7 @@ Test result: FAILED. 0 passed; 1 failed; 0 skipped
                   name: 'write_file',
                   arguments: {
                     filePath: 'test/zyron/FINDING_001.t.sol',
-                    content: 'contract ExploitTest { function test_exploit() public {} }',
+                    content: 'import "../../src/Target.sol";\ncontract ExploitTest { function test_exploit() public { assertEq(1, 1); } }',
                   },
                 },
               ],

@@ -40,6 +40,11 @@ export interface Executor {
   fileExists(relativePath: string): Promise<boolean>;
 
   /**
+   * Optional: disconnects network access after workspace bootstrap before running untrusted code.
+   */
+  lockdownNetwork?(): Promise<void>;
+
+  /**
    * Tears down the session and releases resources (e.g. stops and removes container).
    */
   endSession(): Promise<void>;

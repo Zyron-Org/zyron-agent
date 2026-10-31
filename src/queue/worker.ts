@@ -4,9 +4,10 @@ import axios from 'axios';
 import * as crypto from 'crypto';
 import { FileQueue, StoredJob } from './file-queue';
 import { LlmProvider } from '../llm/provider';
-import { GeminiProvider } from '../llm/gemini.provider';
+import { createLlmProvider } from '../llm/provider-factory';
 import { Executor } from '../sandbox/executor';
 import { DockerExecutor } from '../sandbox/docker-executor';
+import { HostExecutor } from '../sandbox/host-executor';
 import { WorkspaceBootstrap } from '../workspace/bootstrap';
 import { ProverAgent } from '../agent/prover-agent';
 import { TranscriptLogger } from '../logging/transcript-logger';
@@ -34,12 +35,27 @@ export class ProverWorker {
     options: WorkerOptions = {}
   ) {
     this.fileQueue = fileQueue;
-    this.llmProvider = llmProvider || new GeminiProvider();
+    this.llmProvider = llmProvider || createLlmProvider();
     this.pollIntervalMs = options.pollIntervalMs ?? 3000;
     this.workspacesBaseDir = options.workspacesBaseDir || path.join(process.cwd(), 'data', 'workspaces');
     this.executorFactory =
       options.executorFactory ||
-      ((jobId, wsDir) => new DockerExecutor({ jobId, workspaceDir: wsDir }));
+      ((jobId, wsDir) => {
+        const mode = (process.env.SANDBOX_MODE || (process.env.USE_DOCKER === 'false' ? 'host' : 'docker')).toLowerCase();
+        if (mode === 'host') {
+          if (process.env.ALLOW_UNSAFE_HOST_EXECUTION === 'true' && process.env.NODE_ENV !== 'production') {
+            return new HostExecutor({ jobId, workspaceDir: wsDir });
+          }
+          throw new Error(
+            'Sandbox fail-closed: HostExecutor is disabled by default. Use DockerExecutor (SANDBOX_MODE=docker) or explicitly set ALLOW_UNSAFE_HOST_EXECUTION=true in non-production environments.'
+          );
+        }
+        return new DockerExecutor({
+          jobId,
+          workspaceDir: wsDir,
+          imageName: process.env.SANDBOX_IMAGE || 'zyron-sandbox:latest',
+        });
+      });
   }
 
   async start(): Promise<void> {
@@ -127,7 +143,7 @@ export class ProverWorker {
           finding,
           bootstrap.originalFiles,
           logger,
-          { initialBuildOutput: bootstrap.buildOutput }
+          { initialBuildOutput: bootstrap.buildOutput, sourceHashes: bootstrap.sourceHashes }
         );
 
         results.push(result);

@@ -1,125 +1,94 @@
 import { ToolDefinition } from '../llm/types';
 
+/**
+ * Strict, allowlisted tool surface for the prover model.
+ * There is deliberately NO generic shell tool: the model can only read/search the workspace,
+ * write Foundry tests under test/zyron/, build, run a single named test, and submit a claim.
+ * The claim is evaluated by the deterministic HarnessVerifier, never accepted as-is.
+ */
 export const AGENT_TOOLS: ToolDefinition[] = [
   {
-    name: 'run_command',
-    description: 'Executes a bash shell command inside the isolated Linux sandbox. Use this to run forge build, forge test, cast, git, or inspect files.',
-    parameters: {
-      type: 'object',
-      properties: {
-        command: {
-          type: 'string',
-          description: 'The exact bash command line string to run.',
-        },
-        timeoutSeconds: {
-          type: 'integer',
-          description: 'Maximum time to wait before terminating the command (default: 60s, max: 180s).',
-        },
-      },
-      required: ['command'],
-    },
-  },
-  {
     name: 'read_file',
-    description: 'Reads the text content of a file in the workspace.',
+    description: 'Read a text file in the audit workspace (relative path, e.g. "src/Vault.sol").',
     parameters: {
       type: 'object',
       properties: {
-        filePath: {
-          type: 'string',
-          description: 'Relative path to the file from the workspace root (e.g., "src/Vault.sol" or "test/Exploit.t.sol").',
-        },
+        filePath: { type: 'string', maxLength: 300, description: 'Workspace-relative path.' },
       },
       required: ['filePath'],
     },
   },
   {
-    name: 'write_file',
-    description: 'Creates or overwrites a file in the workspace. Use this to write Foundry exploit test files in test/zyron/.',
-    parameters: {
-      type: 'object',
-      properties: {
-        filePath: {
-          type: 'string',
-          description: 'Relative path to write to (must be inside test/zyron/ for test contracts).',
-        },
-        content: {
-          type: 'string',
-          description: 'The full text content to write into the file.',
-        },
-      },
-      required: ['filePath', 'content'],
-    },
-  },
-  {
     name: 'list_dir',
-    description: 'Lists files and folders in a workspace directory.',
+    description: 'List entries of a workspace directory.',
     parameters: {
       type: 'object',
       properties: {
-        dirPath: {
-          type: 'string',
-          description: 'Relative path to directory (default: "." for workspace root).',
-        },
+        dirPath: { type: 'string', maxLength: 300, description: 'Workspace-relative directory (default ".").' },
       },
     },
   },
   {
     name: 'search_code',
-    description: 'Searches for text or regex patterns across the codebase (using grep/ripgrep).',
+    description: 'Search workspace source files for a literal string (or a regex when isRegex=true). Returns up to 50 "path:line: text" matches.',
     parameters: {
       type: 'object',
       properties: {
-        query: {
-          type: 'string',
-          description: 'The string or regex pattern to search for (e.g. "function withdraw" or "modifier lock").',
-        },
-        pathPrefix: {
-          type: 'string',
-          description: 'Subdirectory to search inside (default: ".").',
-        },
+        query: { type: 'string', maxLength: 200, description: 'Text or regex to find, e.g. "function withdraw".' },
+        pathPrefix: { type: 'string', maxLength: 300, description: 'Workspace-relative subdirectory to search (default ".").' },
+        isRegex: { type: 'boolean', description: 'Treat query as a JavaScript regular expression.' },
       },
       required: ['query'],
     },
   },
   {
-    name: 'submit_verdict',
-    description: 'Submits the final verification result for this finding once an exploit test has been written and proven via forge test, or when determined to be a false positive.',
+    name: 'write_file',
+    description: 'Create or overwrite a Solidity test file. Only paths under test/zyron/ ending in .sol are allowed. Original sources are immutable.',
     parameters: {
       type: 'object',
       properties: {
-        verdict: {
-          type: 'string',
-          enum: ['PROVEN_EXPLOIT', 'PROVEN_FALSE_POSITIVE', 'CANNOT_REPRODUCE'],
-          description: 'PROVEN_EXPLOIT: Test successfully broke invariant / drained funds. PROVEN_FALSE_POSITIVE: Invariant held and exploit reverted. CANNOT_REPRODUCE: Could not construct a working proof.',
-        },
-        testFile: {
-          type: 'string',
-          description: 'Path to the finalized Foundry test file (e.g. "test/zyron/FINDING_001.t.sol").',
-        },
-        testFunction: {
-          type: 'string',
-          description: 'The specific test function name executed (e.g. "test_exploit").',
-        },
-        reasoning: {
-          type: 'string',
-          description: 'Detailed technical rationale explaining the vulnerability root cause or why the finding is a false positive.',
-        },
-        fundsDrainedEth: {
-          type: 'number',
-          description: 'Estimated or demonstrated amount of ETH/tokens drained in the proof.',
-        },
-        executionMode: {
-          type: 'string',
-          description: 'Execution mode used: "local" or "fork:<network>@<blockNumber>".',
-        },
-        declaredMocks: {
-          type: 'array',
-          items: { type: 'string', description: 'Names of mock contracts used, if any.' },
-          description: 'List of any mock contracts created for external dependencies.',
-        },
+        filePath: { type: 'string', maxLength: 200, description: 'e.g. "test/zyron/F_001.t.sol".' },
+        content: { type: 'string', maxLength: 100000, description: 'Full file content.' },
       },
-      required: ['verdict', 'testFile', 'testFunction', 'reasoning'],
+      required: ['filePath', 'content'],
+    },
+  },
+  {
+    name: 'forge_build',
+    description: 'Compile the workspace with Foundry (offline) and return compiler output.',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'run_forge_test',
+    description: 'Run Foundry tests in one test file (offline, isolated sandbox). Optionally restrict to one test function.',
+    parameters: {
+      type: 'object',
+      properties: {
+        testFile: { type: 'string', maxLength: 200, description: 'Path under test/zyron/ ending in .t.sol.' },
+        testFunction: { type: 'string', maxLength: 100, description: 'Exact test function name, e.g. "test_exploit".' },
+      },
+      required: ['testFile'],
+    },
+  },
+  {
+    name: 'submit_verdict',
+    description:
+      'Submit your CLAIM for this finding. The harness independently re-executes your test twice against the unmodified target and applies fixed rules. ' +
+      'PROVEN_EXPLOIT: a passing test (not named test_counter*) that demonstrates the security violation. ' +
+      'PROVEN_FALSE_POSITIVE: a passing counterevidence test whose name starts with "test_counter" showing the attack path fails/invariant holds, ' +
+      'PLUS counterevidenceGuard = an exact code snippet from the original target (e.g. "nonReentrant") that prevents the issue. A failed exploit attempt alone is NOT sufficient. ' +
+      'INCONCLUSIVE: evidence is insufficient or the environment prevented testing.',
+    parameters: {
+      type: 'object',
+      properties: {
+        verdict: { type: 'string', enum: ['PROVEN_EXPLOIT', 'PROVEN_FALSE_POSITIVE', 'INCONCLUSIVE'] },
+        testFile: { type: 'string', maxLength: 200, description: 'Test file under test/zyron/ (required unless INCONCLUSIVE).' },
+        testFunction: { type: 'string', maxLength: 100, description: 'Test function name (required unless INCONCLUSIVE).' },
+        reasoning: { type: 'string', maxLength: 4000, description: 'Concise technical summary of the evidence.' },
+        counterevidenceGuard: { type: 'string', maxLength: 300, description: 'Required for PROVEN_FALSE_POSITIVE: verbatim guard snippet from target source.' },
+        fundsDrainedEth: { type: 'number', description: 'Amount demonstrated by the test, if applicable.' },
+      },
+      required: ['verdict', 'reasoning'],
     },
   },
 ];

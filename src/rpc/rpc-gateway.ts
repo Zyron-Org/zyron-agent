@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import axios from 'axios';
-import { RPC_MAINNET, RPC_ARBITRUM, RPC_SEPOLIA } from '../config/env';
+import { RPC_MAINNET, RPC_ARBITRUM, RPC_SEPOLIA, RPC_MONAD_TESTNET } from '../config/env';
 
 export const ALLOWED_RPC_METHODS = new Set([
   'eth_chainId',
@@ -44,6 +44,7 @@ export function getNetworkUrl(network: string, customMap?: Record<string, string
     return customMap[norm];
   }
 
+  if (norm.includes('monad')) return process.env.RPC_MONAD_TESTNET || RPC_MONAD_TESTNET;
   if (norm.includes('arbitrum')) return RPC_ARBITRUM;
   if (norm.includes('sepolia')) return RPC_SEPOLIA;
   return RPC_MAINNET;

@@ -3,6 +3,7 @@ import { ProverJobInput, ProverJobResult, ProverFindingResult } from '../types';
 import { PoCSynthesizer } from '../ai/poc-synthesizer';
 import { SolcCompiler } from '../sandbox/solc-compiler';
 import { EvmSimulator } from '../sandbox/evm-simulator';
+import { FoundryRunner } from '../sandbox/foundry-runner';
 import { TraceFormatter } from '../trace/trace-formatter';
 
 export class JobManager {
@@ -34,14 +35,25 @@ export class JobManager {
           finding,
         );
 
-        // Step 2: Run simulation in virtual sandbox
-        const findingResult = await EvmSimulator.simulateExploit({
-          contractFileName: job.contractFileName,
-          sourceCode: job.sourceCode,
-          finding,
-          synthesizedPoC,
-          artifacts: compileResult.artifacts,
-        });
+        // Step 2: Execute real native Foundry invariant test or AST validation
+        let findingResult: ProverFindingResult;
+        try {
+          findingResult = await FoundryRunner.runProof({
+            contractFileName: job.contractFileName,
+            sourceCode: job.sourceCode,
+            finding,
+            synthesizedPoC,
+          });
+        } catch (runnerErr: any) {
+          console.warn(`[JobManager] FoundryRunner failed (${runnerErr.message}), using Solc/EVM validator`);
+          findingResult = await EvmSimulator.simulateExploit({
+            contractFileName: job.contractFileName,
+            sourceCode: job.sourceCode,
+            finding,
+            synthesizedPoC,
+            artifacts: compileResult.artifacts,
+          });
+        }
 
         // Step 3: Format and sanitize trace steps
         findingResult.traceSteps = TraceFormatter.sanitizeTrace(findingResult.traceSteps);

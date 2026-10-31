@@ -1,9 +1,12 @@
+import * as path from 'path';
 import { Executor } from '../sandbox/executor';
 import { StoredJob } from '../queue/file-queue';
+import { sha256 } from '../agent/verifier';
 
 export interface BootstrapResult {
   success: boolean;
   originalFiles: string[];
+  sourceHashes: Record<string, string>;
   buildOutput: string;
   hasErrors: boolean;
 }
@@ -32,6 +35,7 @@ export class WorkspaceBootstrap {
         return {
           success: false,
           originalFiles: [],
+          sourceHashes: {},
           buildOutput: `Git clone error: ${cloneRes.stderr}`,
           hasErrors: true,
         };
@@ -80,7 +84,10 @@ optimizer_runs = 200
     const hasForgeStd = await executor.fileExists('lib/forge-std/src/Test.sol');
     if (!hasForgeStd) {
       console.log('[WorkspaceBootstrap] Ensuring forge-std is present in lib/forge-std...');
-      await executor.exec('mkdir -p lib && (cp -r /home/zyron/forge-std lib/forge-std 2>/dev/null || git clone --depth 1 https://github.com/foundry-rs/forge-std lib/forge-std)');
+      const localForgeStd = path.resolve(__dirname, '..', '..', '..', 'contracts', 'lib', 'forge-std');
+      await executor.exec(
+        `mkdir -p lib && (cp -r "${localForgeStd}" lib/forge-std 2>/dev/null || cp -r /home/zyron/forge-std lib/forge-std 2>/dev/null || git clone --depth 1 https://github.com/foundry-rs/forge-std lib/forge-std 2>/dev/null || true)`
+      );
     }
 
     // Step 3: Ensure foundry.toml exists if project is Hardhat/Truffle
@@ -99,13 +106,33 @@ optimizer_runs = 200
       await executor.writeFile('foundry.toml', fallbackToml);
     }
 
+    // Step 3.5: Compute SHA-256 baseline hashes of all original files + foundry.toml
+    const sourceHashes: Record<string, string> = {};
+    const filesToHash = Array.from(new Set([...originalFiles, 'foundry.toml']));
+    for (const f of filesToHash) {
+      try {
+        if (await executor.fileExists(f)) {
+          const content = await executor.readFile(f);
+          sourceHashes[f] = sha256(content);
+        }
+      } catch {
+        // Ignore non-text or unreadable files
+      }
+    }
+
+    // Step 3.8: Disconnect container network before untrusted test execution
+    if (executor.lockdownNetwork) {
+      await executor.lockdownNetwork();
+    }
+
     // Step 4: Run initial smoke build
     console.log('[WorkspaceBootstrap] Running initial forge build check...');
-    const buildRes = await executor.exec('forge build --skip test');
+    const buildRes = await executor.exec('FOUNDRY_OFFLINE=true forge build --skip test');
 
     return {
       success: true,
       originalFiles,
+      sourceHashes,
       buildOutput: buildRes.stdout || buildRes.stderr,
       hasErrors: buildRes.exitCode !== 0,
     };

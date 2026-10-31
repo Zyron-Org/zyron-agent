@@ -6,6 +6,8 @@ export interface ToolCall {
   arguments: Record<string, any>;
   thoughtSignature?: string;
   rawPart?: any;
+  /** Set when the provider returned arguments that were not a valid JSON object. */
+  invalidArguments?: string;
 }
 
 export interface ToolResult {
@@ -27,6 +29,7 @@ export interface ToolParameterProperty {
   type: string;
   description?: string;
   enum?: string[];
+  maxLength?: number;
   items?: {
     type: string;
     description?: string;

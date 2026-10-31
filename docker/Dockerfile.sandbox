@@ -30,10 +30,11 @@ RUN userdel -r ubuntu 2>/dev/null || true \
 USER zyron
 WORKDIR /home/zyron
 
-# Install Foundry
+# Install Foundry and pre-clone forge-std for offline sandbox runs
 ENV PATH="/home/zyron/.foundry/bin:${PATH}"
 RUN curl -L https://foundry.paradigm.xyz | bash \
-    && /home/zyron/.foundry/bin/foundryup
+    && /home/zyron/.foundry/bin/foundryup \
+    && git clone --depth 1 https://github.com/foundry-rs/forge-std /home/zyron/forge-std
 
 # Install solc-select and pre-fetch common compiler versions
 ENV PATH="/home/zyron/.local/bin:${PATH}"

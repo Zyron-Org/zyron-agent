@@ -5,3 +5,4 @@ dist
 data/
 logs/
 *.tsbuildinfo
+.DS_Store
