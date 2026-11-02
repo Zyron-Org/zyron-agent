@@ -14,6 +14,7 @@ import {
   searchWorkspace,
   validateToolArgs,
 } from '../src/agent/tool-policy';
+import { WorkspaceBootstrap } from '../src/workspace/bootstrap';
 
 describe('Tool Policy & Allowlists', () => {
   const ws = path.join(process.cwd(), 'data', 'test-policy-ws');
@@ -79,5 +80,41 @@ describe('Tool Policy & Allowlists', () => {
     const listing = listWorkspaceDir(ws, '.');
     expect(listing).not.toContain('.env');
     expect(readWorkspaceFile(ws, 'src/Vault.sol')).toContain('contract Vault');
+  });
+
+  it('rejects unsafe Git repository URLs, tokens, and refs in WorkspaceBootstrap before shell execution', async () => {
+    const executedCommands: string[] = [];
+    const fakeExecutor: any = {
+      exec: async (cmd: string) => {
+        executedCommands.push(cmd);
+        return { exitCode: 0, stdout: '', stderr: '', timedOut: false };
+      },
+      listFiles: async () => [],
+      fileExists: async () => true,
+      readFile: async () => '',
+      writeFile: async () => {},
+    };
+
+    // Unsafe repo URL with shell metacharacters
+    const badUrlRes = await WorkspaceBootstrap.setup(fakeExecutor, {
+      jobId: 'job-bad-url',
+      auditId: 'aud-1',
+      repo: { url: 'https://github.com/org/repo; touch /tmp/pwn' },
+      findings: [],
+      callbackUrl: 'http://localhost:3001/cb',
+    } as any);
+    expect(badUrlRes.success).toBe(false);
+    expect(badUrlRes.buildOutput).toContain('Rejected unsafe repository URL');
+    expect(executedCommands).toHaveLength(0);
+
+    // Unsafe git ref starting with '-' (git option injection) or containing shell metacharacters
+    await WorkspaceBootstrap.setup(fakeExecutor, {
+      jobId: 'job-bad-ref',
+      auditId: 'aud-1',
+      repo: { url: 'https://github.com/Zyron-Org/zyron-test-protocol', branch: '--upload-pack=evil' },
+      findings: [],
+      callbackUrl: 'http://localhost:3001/cb',
+    } as any);
+    expect(executedCommands.some((c) => c.includes('git checkout'))).toBe(false);
   });
 });

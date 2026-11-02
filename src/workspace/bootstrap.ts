@@ -21,15 +21,25 @@ export class WorkspaceBootstrap {
 
     // Step 1: Ingest source code or clone repository
     if (job.repo?.url) {
-      console.log(`[WorkspaceBootstrap] Cloning repository: ${job.repo.url}...`);
-      let cloneUrl = job.repo.url;
+      const rawRepoUrl = String(job.repo.url).trim();
+      if (!/^https:\/\/[A-Za-z0-9._\-/]+(?:\.git)?$/.test(rawRepoUrl)) {
+        return {
+          success: false,
+          originalFiles: [],
+          sourceHashes: {},
+          buildOutput: `Rejected unsafe repository URL: ${rawRepoUrl}`,
+          hasErrors: true,
+        };
+      }
+      console.log(`[WorkspaceBootstrap] Cloning repository: ${rawRepoUrl}...`);
+      let cloneUrl = rawRepoUrl;
 
-      if (githubToken && cloneUrl.includes('github.com')) {
+      if (githubToken && /^[A-Za-z0-9_.\-]+$/.test(githubToken) && cloneUrl.includes('github.com')) {
         const cleanUrl = cloneUrl.replace(/^https?:\/\//, '');
         cloneUrl = `https://x-access-token:${githubToken}@${cleanUrl}`;
       }
 
-      const cloneRes = await executor.exec(`git clone --quiet ${cloneUrl} .`);
+      const cloneRes = await executor.exec(`git clone --quiet -- "${cloneUrl}" .`);
       if (cloneRes.exitCode !== 0) {
         console.warn(`[WorkspaceBootstrap] Git clone failed: ${cloneRes.stderr}`);
         return {
@@ -42,8 +52,12 @@ export class WorkspaceBootstrap {
       }
 
       if (job.repo.commit || job.repo.branch) {
-        const targetRef = job.repo.commit || job.repo.branch;
-        await executor.exec(`git checkout ${targetRef}`);
+        const targetRef = String(job.repo.commit || job.repo.branch).trim();
+        if (/^[A-Za-z0-9._\-/]{1,128}$/.test(targetRef) && !targetRef.startsWith('-')) {
+          await executor.exec(`git checkout -- "${targetRef}"`);
+        } else {
+          console.warn(`[WorkspaceBootstrap] Ignored unsafe git ref: ${targetRef}`);
+        }
       }
 
       await executor.exec('git submodule update --init --recursive');

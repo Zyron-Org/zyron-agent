@@ -11,8 +11,8 @@ export const RPC_SEPOLIA = process.env.RPC_SEPOLIA || 'https://sepolia.gateway.t
 export const RPC_MONAD_TESTNET = process.env.RPC_MONAD_TESTNET || 'https://testnet-rpc.monad.xyz';
 export const MONAD_TESTNET_CHAIN_ID = 10143;
 
-// Agent onchain identity keypair (for cryptographic signing of proven findings)
-export const AGENT_PRIVATE_KEY = process.env.AGENT_PRIVATE_KEY || '0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d';
+// Agent optional cryptographic key (never use a hardcoded fallback private key)
+export const AGENT_PRIVATE_KEY = process.env.AGENT_PRIVATE_KEY || '';
 
 export const AGENT_API_KEY = process.env.AGENT_API_KEY || 'zyron_agent_internal_secret_key_2026_secure';
 export const CALLBACK_SHARED_SECRET = process.env.CALLBACK_SHARED_SECRET || 'zyron_callback_hmac_secret_2026';
